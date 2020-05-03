@@ -1,36 +1,40 @@
-import httplib2
+import gspread
+import pandas as pd
 import os
-
-from apiclient import discovery
+import requests
 from google.oauth2 import service_account
+# from oauth2client.service_account import ServiceAccountCredentials
+from bs4 import BeautifulSoup
 
-try:
-    scopes = ["https://www.googleapis.com/auth/drive",
-              "https://www.googleapis.com/auth/drive.file",
-              "https://www.googleapis.com/auth/spreadsheets"]
-    secret_file = os.path.join(os.getcwd(), 'client_secret.json')
+scope = ['https://spreadsheets.google.com/feeds',
+         'https://www.googleapis.com/auth/drive']
+secret_file = os.path.join(os.getcwd(), 'client_secret.json')
 
-    spreadsheet_id = '1Jgsf-5wtsCdyDiIp-P_EZbnoT6Ya_0URC3I8s1-5GeM'
-    range_name = 'Sheet1!A1:D2'
+credentials = service_account.Credentials.from_service_account_file(
+    secret_file, scopes=scope)
 
-    credentials = service_account.Credentials.from_service_account_file(
-        secret_file, scopes=scopes)
-    service = discovery.build('sheets', 'v4', credentials=credentials)
+gc = gspread.authorize(credentials)
 
-    values = [
-        ['a1', 'b1', 'c1', 123],
-        ['a2', 'b2', 'c2', 456],
-    ]
+sht1 = gc.open_by_key('1Jgsf-5wtsCdyDiIp-P_EZbnoT6Ya_0URC3I8s1-5GeM')
 
-    data = {
-        'values': values
-    }
+df = pd.DataFrame(sht1.worksheet("Fontes").get_all_values()[1:])
+df.columns = df.iloc[0]
+df.drop(df.index[0], inplace=True)
 
-    service.spreadsheets().values().update(
-                                           spreadsheetId=spreadsheet_id,
-                                           body=data, range=range_name,
-                                           valueInputOption='USER_ENTERED'
-                                           ).execute()
+header = {"User-Agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64)"
+          "AppleWebKit/537.36 (KHTML, like Gecko)"
+          "Chrome/54.0.2840.71 Safari/537.36",
+          "upgrade-insecure-requests": "1",
+          "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,"
+          "image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3",
+          "accept-encoding": "gzip, deflate, br",
+          "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
+          "cache-control": "max-age=0"}
 
-except OSError as e:
-    print(e)
+res = requests.get(df['Competitor Link'].iloc[0], headers=header)
+
+soup = BeautifulSoup(res.text, "html.parser")
+
+price = soup.find("div", {"class": "preco_normal"}).text.replace("R$", "")
+print(price)
+sht1.worksheet("Fontes").update_acell('C3', price)
